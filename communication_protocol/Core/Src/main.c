@@ -72,17 +72,17 @@ void ProcessIncomingData(uint8_t *data, uint8_t len);//main.h dosyasına da yaz�
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) // Mesajı DMA ile alınması
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) // Mesajın DMA ile alınması
 {
 	/*
 	 * DMA komutu yazılırken veri boyutu belirtilir.
-	 * Eğer gelen mesajın veri boyutu, belirtilen değerden küçük olursa(eksik mesaj gelirse) Bu fonksiyon çalışmaz ve muhtemelen donma gerçekleşir.
-	 * Yani burada belirtilecek olan dataLen, mesajdan az olmamalı ---> HAL_UART_Receive_DMA(&huart4, (uint8_t *)uartData, dataLen);
+	 * Eğer gelen mesajın veri boyutu, belirtilen değerden küçük olursa(eksik mesaj gelirse) bu fonksiyon çalışmaz ve muhtemelen donma gerçekleşir.
+	 * Eğer gelen mesajın veri boyutu, belirtilen değerden büyük olursa(fazla mesaj gelirse) bu veri kaybına sebep olur.
+	 * Yani burada belirtilecek olan dataLen, mesajdan az ya da çok olmamalı ---> HAL_UART_Receive_DMA(&huart4, (uint8_t *)uartData, dataLen);
 	 * dataLen başlık kısmının boyutunu içermez, kendinden sonra gelecek olan verinin boyutunu belirtir.
 	 */
   if (huart->Instance == UART4) // Eğer UART4 kullanılıyorsa
   {
-    /***** C-IoT_Slave de çalışan veri okuma işlemleri *****/
     if (!header0)
     {
       if (uartHeader[0] == 0x45)                               // Başlık kontrolü
@@ -125,7 +125,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) // Mesajı DMA ile alın
       {
         headerCheck = true;                                          // Başlık kontrolü başarılı
         dmaStartTick = HAL_GetTick();                                // *** Timeout timer'ı başlat ***
-        waitingForData = 1;                                          // *** Bekleme modunu aktif et ***
+        waitingForData = 1;                                          // *** Timeout bekleme modunu aktif et ***
         HAL_UART_Receive_DMA(&huart4, (uint8_t *)uartData, dataLen); // Gelen veriyi al
       }
     }
@@ -136,7 +136,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) // Mesajı DMA ile alın
       header1 = false;     // Başlık kısmını sıfırla
       header2 = false;     // Başlık kısmını sıfırla
 
-      waitingForData = 0; // *** Bekleme modunu kapat ***
+      waitingForData = 0; // *** Timeout bekleme modunu kapat ***
 
       ProcessIncomingData(&uartData[0], dataLen);   // Gelen veriyi işleme fonksiyonunu çağırıyoruz
       HAL_UART_Receive_DMA(&huart4, uartHeader, 1); // Başlık kısmını dinlemeye devam et
@@ -145,7 +145,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) // Mesajı DMA ile alın
 }
 
 
-void ProcessIncomingData(uint8_t *data, uint8_t len) // VERİLERİN İŞLENME FONKSİYONU DÜZENLENECEK
+void ProcessIncomingData(uint8_t *data, uint8_t len) // VERİLERİN İŞLENME FONKSİYONU
 {
 	  switch (data[0]) // Gelen verinin türüne göre işlem yapılıyor
 	  {
@@ -246,7 +246,20 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
+  {      
+	  if (waitingForData)
+      {
+        if (HAL_GetTick() - dmaStartTick > 100) // 100 ms örnek, ihtiyaca göre ayarlayabilirsin
+        {
+          // Timeout oldu, sistem başa dönsün
+          header0 = false;
+          header1 = false;
+          headerCheck = false;
+          waitingForData = 0;
+          HAL_UART_Receive_DMA(&huart4, uartHeader, 1); // Baştan başla
+        }
+      }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
